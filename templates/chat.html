@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100vh;
+            flex-direction: column;
+        }
+        #messages {
+            max-height: 70vh;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+            width: 90%;
+        }
+        button {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Messages:</h2>
+    <div id="messages"></div>
+
+    <div class="container">
+        <input type="text" id="username" placeholder="Username" required>
+        <textarea id="message" required></textarea>
+        <button id="sendlet">Send</button>
+        <button id="notifyBtn">Enable Notifications</button>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            var socket = io.connect(window.location.origin);
+
+            // Register service worker for push notifications
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                .then(function(registration) {
+                    console.log('Service Worker registered with scope:', registration.scope);
+                })
+                .catch(function(error) {
+                    console.error('Service Worker registration failed:', error);
+                });
+            }
+
+            $('#notifyBtn').on('click', function() {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === 'granted') {
+                        console.log('Notification permission granted.');
+                        subscribeUserToPush();
+                    } else if (permission === 'denied') {
+                        console.log('Notification permission denied.');
+                    } else {
+                        console.log('Notification permission dismissed.');
+                    }
+                });
+            });
+
+            function subscribeUserToPush() {
+                navigator.serviceWorker.ready.then(function(registration) {
+                    registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8Array('<YOUR_PUBLIC_VAPID_KEY>')
+                    })
+                    .then(function(subscription) {
+                        console.log('User is subscribed:', subscription);
+                    })
+                    .catch(function(err) {
+                        console.log('Failed to subscribe the user: ', err);
+                    });
+                });
+            }
+
+            socket.on('connect', function() {
+                socket.send("User connected!");
+            });
+
+            socket.on('message', function(message) {
+                $('#messages').append($('<p>').text(message));
+                if (Notification.permission === 'granted') {
+                    new Notification('New Message', {
+                        body: message,
+                        icon: 'path/to/icon.png'
+                    });
+                }
+            });
+
+            $('#sendlet').on('click', function() {
+                var username = $('#username').val();
+                var message = $('#message').val();
+                if (username && message) {
+                    socket.send(username + ': ' + message);
+                    $('#message').val('');
+                } else {
+                    alert("Please enter a username and a message.");
+                }
+            });
+        });
+
+        function urlB64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+        }
+    </script>
+</body>
+</html>
